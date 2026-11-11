@@ -1,5 +1,5 @@
 // Offline support: serve from cache instantly, update the cache in the background.
-const CACHE = 'opstelling-v3';
+const CACHE = 'opstelling-v4';
 const ASSETS = [
   './',
   './index.html',

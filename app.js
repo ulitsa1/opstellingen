@@ -2,26 +2,59 @@
 
 /* ---------- Config ---------- */
 
+// Rowers per team. To add or remove a rower, edit these lists.
+// side: 'SB' (stuurboord) or 'BB' (bakboord) is the rower's usual side (shown as colour).
+// The side printed in the message always comes from the seat they sit on.
+// stroke: the side of the slag seat; the other seats alternate from there.
 const TEAMS = {
-  HCL8: { name: 'HCL8', size: 8, sides: true },
-  DCL8: { name: 'DCL8', size: 8, sides: true },
-  'DCL4*': { name: 'DCL4*', size: 4, sides: false },
+  HCL8: {
+    name: 'HCL8', size: 8, stroke: 'BB',
+    rowers: [
+      ['Gijs', 'BB'], ['Jesse', 'SB'], ['Lasse', 'SB'], ['Louk', 'SB'], ['Martijn', 'SB'],
+      ['Ole', 'BB'], ['Ruud', 'BB'], ['Sebastiaan', 'SB'], ['Stan', 'SB'], ['Tinco', 'BB'],
+      ['Tobias', 'SB'], ['Tom', 'BB'], ['Casper', 'BB'],
+    ],
+  },
+  DCL8: {
+    name: 'DCL8', size: 8, stroke: 'SB',
+    rowers: [
+      ['Annemijn', 'SB'], ['Iris', 'SB'], ['Milla', 'BB'], ['Milou', 'BB'], ['Mirthe', 'SB'],
+      ['Sofie', 'BB'], ['Sol', 'BB'], ['Sytske', 'BB'], ['Tess', 'BB'], ['Mathilde', 'SB'],
+      ['Nanna', 'SB'],
+    ],
+  },
+  'DCL4*': {
+    name: 'DCL4*', size: 4, stroke: null, // scull: no sides
+    rowers: [['Mette'], ['Anna'], ['Merel'], ['Isabel'], ['Jasmijn'], ['Laila']],
+  },
 };
+
+const ERGO_BEFORE = 30; // minutes before bootnat
+const VOOR_BEFORE = 15; // minutes before bootnat
+const DEFAULT_BOOT = '11:00';
+
 const DAY_WORDS = ['vandaag', 'morgen', 'overmorgen'];
-const STORAGE_KEY = 'opstellingen-v1';
+const STORAGE_KEY = 'opstellingen-v2';
 const AUTH_KEY = 'opstellingen-auth';
 const PASSCODE = '1966'; // Simple gate only; anyone reading the source can see it.
 
-// Shared storage for all coaches: a Firebase Realtime Database URL
-// (e.g. 'https://opstellingen-default-rtdb.europe-west1.firebasedatabase.app').
-// Leave empty to keep data only on this device.
-const DB_URL = '';
-
 /* ---------- Pure helpers (also used by tests) ---------- */
 
-// In an eight, even seats row bakboord (BB), odd seats stuurboord (SB).
-function seatSide(seat) {
-  return seat % 2 === 0 ? 'BB' : 'SB';
+function rostersOf(cfg) {
+  return cfg.rowers.map(([name, side]) => ({ id: name, name, side: side || null }));
+}
+
+// Slag (seat = size) has cfg.stroke; sides alternate towards the boeg.
+function seatSide(cfg, seat) {
+  if (!cfg.stroke) return null;
+  const other = cfg.stroke === 'SB' ? 'BB' : 'SB';
+  return (cfg.size - seat) % 2 === 0 ? cfg.stroke : other;
+}
+
+function minusMinutes(hhmm, mins) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = (((h * 60 + m - mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 }
 
 function dayDate(offset, now) {
@@ -39,12 +72,13 @@ function formatShort(d) {
   return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-function benchOf(team) {
-  return team.rowers.filter((r) => !team.seats.includes(r.id));
+function benchOf(team, cfg) {
+  return rostersOf(cfg).filter((r) => !team.seats.includes(r.id));
 }
 
 function buildMessage(team, cfg, now) {
-  const byId = (id) => team.rowers.find((r) => r.id === id);
+  const rowers = rostersOf(cfg);
+  const byId = (id) => rowers.find((r) => r.id === id);
   const label = (team.label || '').trim() || 'boottraining';
   const date = formatLong(dayDate(team.day, now));
   const lines = [`De opstelling voor de ${label} van ${DAY_WORDS[team.day]}, ${date}:`, ''];
@@ -52,169 +86,77 @@ function buildMessage(team, cfg, now) {
   for (let s = cfg.size; s >= 1; s--) {
     const r = byId(team.seats[s - 1]);
     let line = `${s} ${r ? r.name : '-'}`;
-    if (r && cfg.sides) line += ' ' + (r.side === 'X' ? seatSide(s) : r.side);
+    if (r && cfg.stroke) line += ' ' + seatSide(cfg, s);
     if (s === cfg.size) line += ' (slag)';
     else if (s === 1) line += ' (boeg)';
     lines.push(line);
   }
 
-  const t = team.times;
-  const timeLines = [];
-  if (t.ergo) timeLines.push(`${t.ergo} ergo`);
-  if (t.voor) timeLines.push(`${t.voor} voorbespreken`);
-  if (t.boot) timeLines.push(`${t.boot} bootnat`);
-  if (timeLines.length) lines.push('', ...timeLines);
+  if (team.boot) {
+    lines.push(
+      '',
+      `${minusMinutes(team.boot, ERGO_BEFORE)} ergo`,
+      `${minusMinutes(team.boot, VOOR_BEFORE)} voorbespreken`,
+      `${team.boot} bootnat`,
+    );
+  }
 
-  const subs = benchOf(team).map((r) => r.name);
+  const subs = benchOf(team, cfg).map((r) => r.name);
   if (subs.length) lines.push('', 'Vervangende training:', subs.join(', '));
 
   return lines.join('\n');
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { TEAMS, seatSide, buildMessage, benchOf };
+  module.exports = { TEAMS, seatSide, minusMinutes, buildMessage, benchOf };
 }
 
 /* ---------- App (browser only) ---------- */
 
 if (typeof document !== 'undefined') {
   const $ = (sel) => document.querySelector(sel);
-  const uid = () => Math.random().toString(36).slice(2, 10);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function newTeam(size) {
-    return {
-      rowers: [],
-      seats: Array(size).fill(null),
-      day: 1,
-      label: 'boottraining',
-      times: { ergo: '10:30', voor: '10:45', boot: '11:00' },
-    };
+    return { seats: Array(size).fill(null), day: 1, label: 'boottraining', boot: DEFAULT_BOOT };
   }
 
-  function seed() {
-    const s = { active: 'HCL8', teams: {} };
-    for (const k in TEAMS) s.teams[k] = newTeam(TEAMS[k].size);
-    const demo = [
-      ['Sebastiaan', 'SB'], ['Gijs', 'BB'], ['Jesse', 'SB'], ['Tinco', 'BB'],
-      ['Stan', 'SB'], ['Oli', 'BB'], ['Tobias', 'SB'], ['Tom', 'BB'],
-      ['Martijn', 'X'], ['Lasse', 'X'], ['Louk', 'X'], ['Ruud', 'X'],
-    ];
-    const t = s.teams.HCL8;
-    demo.forEach(([name, side], i) => {
-      const r = { id: uid(), name, side };
-      t.rowers.push(r);
-      if (i < 8) t.seats[i] = r.id;
-    });
-    return s;
+  // Seats only keep rowers that are still in the roster in the code.
+  function normTeam(k, raw) {
+    const cfg = TEAMS[k];
+    const t = Object.assign(newTeam(cfg.size), raw || {});
+    const ids = new Set(rostersOf(cfg).map((r) => r.id));
+    const seats = Array.isArray(t.seats) ? t.seats : [];
+    t.seats = Array.from({ length: cfg.size }, (_, i) => (ids.has(seats[i]) ? seats[i] : null));
+    if (![0, 1, 2].includes(t.day)) t.day = 1;
+    if (!/^\d\d:\d\d$/.test(t.boot || '')) t.boot = DEFAULT_BOOT;
+    return t;
   }
 
   function load() {
     let s = null;
     try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { s = null; }
-    if (!s || !s.teams) return seed();
+    if (!s || typeof s !== 'object') s = {};
     if (!TEAMS[s.active]) s.active = 'HCL8';
-    for (const k in TEAMS) s.teams[k] = normTeam(k, s.teams[k]);
+    const teams = s.teams || {};
+    s.teams = {};
+    for (const k in TEAMS) s.teams[k] = normTeam(k, teams[k]);
     return s;
-  }
-
-  // Also accepts Firebase's shape: empty arrays/nulls dropped, sparse arrays as objects.
-  function normTeam(k, raw) {
-    const size = TEAMS[k].size;
-    const t = Object.assign(newTeam(size), raw || {});
-    t.rowers = (Array.isArray(t.rowers) ? t.rowers : Object.values(t.rowers || {})).filter((r) => r && r.id);
-    t.times = Object.assign({ ergo: '', voor: '', boot: '' }, t.times);
-    const seats = t.seats || {};
-    const ids = new Set(t.rowers.map((r) => r.id));
-    t.seats = Array.from({ length: size }, (_, i) => (ids.has(seats[i]) ? seats[i] : null));
-    if (![0, 1, 2].includes(t.day)) t.day = 1;
-    return t;
   }
 
   const state = load();
 
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
-    queuePush(state.active);
-  }
-
-  /* ---------- Shared sync (Firebase REST) ---------- */
-
-  const dirty = new Set();
-  let pushTimer = 0;
-  let syncReady = false; // don't push before the first pull, or we'd overwrite shared data
-  let warnedOffline = false;
-
-  const teamUrl = (k) => `${DB_URL}/teams/${encodeURIComponent(k)}.json`;
-
-  function queuePush(k) {
-    if (!DB_URL) return;
-    dirty.add(k);
-    if (!syncReady) return;
-    clearTimeout(pushTimer);
-    pushTimer = setTimeout(push, 700);
-  }
-
-  async function push() {
-    pushTimer = 0;
-    const keys = [...dirty];
-    dirty.clear();
-    for (const k of keys) {
-      try {
-        const res = await fetch(teamUrl(k), { method: 'PUT', body: JSON.stringify(state.teams[k]) });
-        if (!res.ok) throw new Error(res.status);
-        warnedOffline = false;
-      } catch (e) {
-        dirty.add(k);
-        if (!warnedOffline) toast('Niet gedeeld (offline?) – lokaal bewaard');
-        warnedOffline = true;
-      }
-    }
-  }
-
-  // Skip pulls while the user is mid-edit so remote data never yanks the UI from under them.
-  function busy() {
-    const a = document.activeElement;
-    return dirty.size > 0 || pushTimer || drag || dlg.open || (a && a.tagName === 'INPUT');
-  }
-
-  async function pull() {
-    if (!DB_URL) return;
-    if (syncReady && dirty.size && !pushTimer) await push(); // retry changes that failed to send
-    if (syncReady && busy()) return;
-    let remote;
-    try {
-      const res = await fetch(`${DB_URL}/teams.json`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(res.status);
-      remote = await res.json();
-    } catch (e) {
-      syncReady = true; // offline: keep working locally, push when possible
-      return;
-    }
-    const first = !syncReady;
-    syncReady = true;
-    if (!first && busy()) return;
-    for (const k in TEAMS) {
-      if (remote && remote[k]) state.teams[k] = normTeam(k, remote[k]);
-      else queuePush(k); // nothing shared yet for this team: share ours
-    }
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
-    if (dirty.size) push();
-    render();
   }
 
   const team = () => state.teams[state.active];
   const cfg = () => TEAMS[state.active];
-  const rowerById = (id) => team().rowers.find((r) => r.id === id);
-
-  function colorClass(r) {
-    if (!cfg().sides || r.side === 'X') return 'multi';
-    return r.side === 'SB' ? 'sb' : 'bb';
-  }
+  const rowerById = (id) => rostersOf(cfg()).find((r) => r.id === id);
 
   function rowerHTML(r) {
-    const side = cfg().sides ? (r.side === 'X' ? 'SB/BB' : r.side) : '';
-    return `<div class="rower ${colorClass(r)}" data-id="${r.id}"><span>${esc(r.name)}</span>${side ? `<span class="side">${side}</span>` : ''}</div>`;
+    const cls = r.side === 'SB' ? 'sb' : r.side === 'BB' ? 'bb' : 'multi';
+    return `<div class="rower ${cls}" data-id="${esc(r.id)}"><span>${esc(r.name)}</span>${r.side ? `<span class="side">${r.side}</span>` : ''}</div>`;
   }
 
   /* ---------- Render ---------- */
@@ -228,13 +170,13 @@ if (typeof document !== 'undefined') {
       .join('');
 
     $('#boatTitle').textContent = `${c.name} · ${c.size} plekken`;
-    $('#legend').hidden = !c.sides;
+    $('#legend').hidden = !c.stroke;
 
     let boat = '';
     for (let s = c.size; s >= 1; s--) {
       const r = rowerById(t.seats[s - 1]);
       const tag = s === c.size ? 'slag' : s === 1 ? 'boeg' : '';
-      const sub = [tag, c.sides ? seatSide(s) : ''].filter(Boolean).join(' · ');
+      const sub = [tag, seatSide(c, s)].filter(Boolean).join(' · ');
       boat += `<div class="seat" data-seat="${s - 1}">
         <div class="seat-no"><b>${s}</b><small>${sub || '&nbsp;'}</small></div>
         <div class="slot">${r ? rowerHTML(r) : '<span class="empty">Leeg</span>'}</div>
@@ -242,7 +184,7 @@ if (typeof document !== 'undefined') {
     }
     $('#boat').innerHTML = boat;
 
-    const bench = benchOf(t);
+    const bench = benchOf(t, c);
     $('#bench').innerHTML = bench.length
       ? bench.map(rowerHTML).join('')
       : '<span class="none">Geen reserves</span>';
@@ -251,15 +193,17 @@ if (typeof document !== 'undefined') {
         <b>${w[0].toUpperCase() + w.slice(1)}</b><small>${formatShort(dayDate(i))}</small></button>`).join('');
 
     $('#labelInput').value = t.label;
-    $('#tErgo').value = t.times.ergo;
-    $('#tVoor').value = t.times.voor;
-    $('#tBoot').value = t.times.boot;
+    $('#tBoot').value = t.boot;
 
     renderMessage();
   }
 
   function renderMessage() {
-    const msg = buildMessage(team(), cfg());
+    const t = team();
+    $('#timesHint').textContent = t.boot
+      ? `Ergo ${minusMinutes(t.boot, ERGO_BEFORE)} · Voorbespreken ${minusMinutes(t.boot, VOOR_BEFORE)}`
+      : '';
+    const msg = buildMessage(t, cfg());
     $('#preview').textContent = msg;
     $('#waBtn').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
   }
@@ -291,22 +235,18 @@ if (typeof document !== 'undefined') {
     renderMessage();
   });
 
-  [['#tErgo', 'ergo'], ['#tVoor', 'voor'], ['#tBoot', 'boot']].forEach(([sel, key]) => {
-    const onChange = (e) => {
-      team().times[key] = e.target.value;
-      save();
-      renderMessage();
-    };
-    $(sel).addEventListener('input', onChange);
-    $(sel).addEventListener('change', onChange);
-  });
+  const onBoot = (e) => {
+    team().boot = e.target.value;
+    save();
+    renderMessage();
+  };
+  $('#tBoot').addEventListener('input', onBoot);
+  $('#tBoot').addEventListener('change', onBoot);
 
   $('#clearBtn').addEventListener('click', () => {
     team().seats.fill(null);
     commit();
   });
-
-  $('#addBtn').addEventListener('click', () => openEditor(null));
 
   // Refresh dates when coming back to the app (e.g. the next day).
   document.addEventListener('visibilitychange', () => {
@@ -451,9 +391,7 @@ if (typeof document !== 'undefined') {
     if (!drag || e.pointerId !== drag.pid) return;
     const { id, started, target } = drag;
     endDrag();
-    if (!started) {
-      openEditor(id);
-    } else if (target) {
+    if (started && target) {
       dropRower(id, target);
       commit();
     }
@@ -461,102 +399,16 @@ if (typeof document !== 'undefined') {
 
   document.addEventListener('pointercancel', endDrag);
 
-  /* ---------- Rower editor ---------- */
-
-  const dlg = $('#editor');
-  const nameInput = $('#nameInput');
-  let editing = null;
-
-  function paintSidePick() {
-    document.querySelectorAll('#sidePick button').forEach((b) => {
-      b.setAttribute('aria-pressed', String(b.dataset.side === editing.side));
-    });
-  }
-
-  function openEditor(id) {
-    const r = id ? rowerById(id) : null;
-    const lastSide = editing && !id ? editing.side : 'SB';
-    editing = { id, side: r ? r.side : cfg().sides ? lastSide : 'X' };
-    $('#editTitle').textContent = r ? 'Roeier wijzigen' : `Roeier toevoegen · ${cfg().name}`;
-    nameInput.value = r ? r.name : '';
-    $('#sidePick').hidden = !cfg().sides;
-    $('#delBtn').hidden = !r;
-    $('#saveNextBtn').hidden = !!r;
-    paintSidePick();
-    if (!dlg.open) dlg.showModal();
-    if (!r) nameInput.focus();
-  }
-
-  function saveEditor() {
-    const name = nameInput.value.trim();
-    if (!name) {
-      nameInput.focus();
-      return false;
-    }
-    if (editing.id) {
-      const r = rowerById(editing.id);
-      r.name = name;
-      r.side = editing.side;
-    } else {
-      team().rowers.push({ id: uid(), name, side: editing.side });
-    }
-    commit();
-    return true;
-  }
-
-  $('#sidePick').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-side]');
-    if (!b) return;
-    editing.side = b.dataset.side;
-    paintSidePick();
-  });
-
-  $('#editForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (saveEditor()) dlg.close();
-  });
-
-  $('#saveNextBtn').addEventListener('click', () => {
-    if (saveEditor()) {
-      toast(`${nameInput.value.trim()} toegevoegd`);
-      openEditor(null);
-    }
-  });
-
-  $('#cancelBtn').addEventListener('click', () => dlg.close());
-
-  $('#delBtn').addEventListener('click', () => {
-    const r = rowerById(editing.id);
-    if (!r || !confirm(`${r.name} verwijderen?`)) return;
-    const t = team();
-    t.rowers = t.rowers.filter((x) => x.id !== r.id);
-    t.seats = t.seats.map((s) => (s === r.id ? null : s));
-    dlg.close();
-    commit();
-  });
-
-  // Tap outside the dialog closes it.
-  dlg.addEventListener('click', (e) => {
-    if (e.target === dlg) dlg.close();
-  });
-
   /* ---------- Start ---------- */
 
   render();
   save();
-
-  function startSync() {
-    pull();
-    setInterval(() => { if (!document.hidden) pull(); }, 20000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
-  }
 
   const gate = $('#gate');
   let authed = false;
   try { authed = localStorage.getItem(AUTH_KEY) === '1'; } catch (e) { authed = false; }
   if (authed) {
     gate.remove();
-    startSync();
   } else {
     gate.hidden = false;
     $('#gateInput').focus();
@@ -565,7 +417,6 @@ if (typeof document !== 'undefined') {
       if ($('#gateInput').value.trim() === PASSCODE) {
         try { localStorage.setItem(AUTH_KEY, '1'); } catch (err) { /* storage unavailable */ }
         gate.remove();
-        startSync();
       } else {
         $('#gateInput').value = '';
         $('#gateMsg').hidden = false;

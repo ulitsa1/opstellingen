@@ -39,7 +39,6 @@
       <div class="legend" id="legend">
         <span><i class="dot sb"></i>Stuurboord</span>
         <span><i class="dot bb"></i>Bakboord</span>
-        <span><i class="dot multi"></i>Beide</span>
       </div>
       <div id="boat" class="boat"></div>
     </section>
@@ -47,10 +46,9 @@
     <section class="card">
       <div class="card-head">
         <h2>Reserves</h2>
-        <button type="button" class="link" id="addBtn">+ Roeier</button>
       </div>
       <div id="bench" class="bench" data-bench></div>
-      <p class="hint">Sleep een roeier naar een plek in de boot. Tik op een roeier om te wijzigen.</p>
+      <p class="hint">Sleep een roeier naar een plek in de boot, of terug naar de reserves.</p>
     </section>
 
     <section class="card">
@@ -60,11 +58,11 @@
         <span>Training</span>
         <input id="labelInput" type="text" autocomplete="off" placeholder="boottraining">
       </label>
-      <div class="times">
-        <label class="field"><span>Ergo</span><input type="time" id="tErgo"></label>
-        <label class="field"><span>Voorbespreken</span><input type="time" id="tVoor"></label>
-        <label class="field"><span>Bootnat</span><input type="time" id="tBoot"></label>
-      </div>
+      <label class="field">
+        <span>Bootnat</span>
+        <input type="time" id="tBoot">
+      </label>
+      <p class="hint" id="timesHint"></p>
     </section>
 
     <section class="card">
@@ -77,25 +75,6 @@
     <button type="button" id="copyBtn" class="primary">Kopieer bericht</button>
     <a id="waBtn" class="wa" target="_blank" rel="noopener">WhatsApp</a>
   </div>
-
-  <dialog id="editor">
-    <form id="editForm">
-      <h3 id="editTitle">Roeier</h3>
-      <input id="nameInput" type="text" autocomplete="off" autocapitalize="words" placeholder="Naam">
-      <div class="sidepick" id="sidePick">
-        <button type="button" data-side="SB" class="sb">Stuurboord</button>
-        <button type="button" data-side="BB" class="bb">Bakboord</button>
-        <button type="button" data-side="X" class="multi">Beide</button>
-      </div>
-      <div class="dlg-actions">
-        <button type="button" id="delBtn" class="danger">Verwijderen</button>
-        <span class="spacer"></span>
-        <button type="button" id="cancelBtn">Annuleer</button>
-        <button type="submit" class="primary">Opslaan</button>
-      </div>
-      <button type="button" id="saveNextBtn" class="secondary">Opslaan + volgende</button>
-    </form>
-  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
