@@ -16,6 +16,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="gate" class="gate" hidden>
+    <form id="gateForm">
+      <h1>Opstelling</h1>
+      <input id="gateInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Code" aria-label="Code">
+      <p id="gateMsg" class="gate-msg" hidden>Onjuiste code</p>
+      <button type="submit" class="primary">Open</button>
+    </form>
+  </div>
+
   <header class="top">
     <h1>Opstelling</h1>
     <nav class="tabs" id="tabs" aria-label="Ploeg"></nav>

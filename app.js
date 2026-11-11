@@ -9,6 +9,13 @@ const TEAMS = {
 };
 const DAY_WORDS = ['vandaag', 'morgen', 'overmorgen'];
 const STORAGE_KEY = 'opstellingen-v1';
+const AUTH_KEY = 'opstellingen-auth';
+const PASSCODE = '1966'; // Simple gate only; anyone reading the source can see it.
+
+// Shared storage for all coaches: a Firebase Realtime Database URL
+// (e.g. 'https://opstellingen-default-rtdb.europe-west1.firebasedatabase.app').
+// Leave empty to keep data only on this device.
+const DB_URL = '';
 
 /* ---------- Pure helpers (also used by tests) ---------- */
 
@@ -107,22 +114,93 @@ if (typeof document !== 'undefined') {
     try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { s = null; }
     if (!s || !s.teams) return seed();
     if (!TEAMS[s.active]) s.active = 'HCL8';
-    for (const k in TEAMS) {
-      const size = TEAMS[k].size;
-      const t = Object.assign(newTeam(size), s.teams[k] || {});
-      t.times = Object.assign({ ergo: '', voor: '', boot: '' }, t.times);
-      const ids = new Set(t.rowers.map((r) => r.id));
-      t.seats = Array.from({ length: size }, (_, i) => (ids.has(t.seats[i]) ? t.seats[i] : null));
-      if (![0, 1, 2].includes(t.day)) t.day = 1;
-      s.teams[k] = t;
-    }
+    for (const k in TEAMS) s.teams[k] = normTeam(k, s.teams[k]);
     return s;
+  }
+
+  // Also accepts Firebase's shape: empty arrays/nulls dropped, sparse arrays as objects.
+  function normTeam(k, raw) {
+    const size = TEAMS[k].size;
+    const t = Object.assign(newTeam(size), raw || {});
+    t.rowers = (Array.isArray(t.rowers) ? t.rowers : Object.values(t.rowers || {})).filter((r) => r && r.id);
+    t.times = Object.assign({ ergo: '', voor: '', boot: '' }, t.times);
+    const seats = t.seats || {};
+    const ids = new Set(t.rowers.map((r) => r.id));
+    t.seats = Array.from({ length: size }, (_, i) => (ids.has(seats[i]) ? seats[i] : null));
+    if (![0, 1, 2].includes(t.day)) t.day = 1;
+    return t;
   }
 
   const state = load();
 
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+    queuePush(state.active);
+  }
+
+  /* ---------- Shared sync (Firebase REST) ---------- */
+
+  const dirty = new Set();
+  let pushTimer = 0;
+  let syncReady = false; // don't push before the first pull, or we'd overwrite shared data
+  let warnedOffline = false;
+
+  const teamUrl = (k) => `${DB_URL}/teams/${encodeURIComponent(k)}.json`;
+
+  function queuePush(k) {
+    if (!DB_URL) return;
+    dirty.add(k);
+    if (!syncReady) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(push, 700);
+  }
+
+  async function push() {
+    pushTimer = 0;
+    const keys = [...dirty];
+    dirty.clear();
+    for (const k of keys) {
+      try {
+        const res = await fetch(teamUrl(k), { method: 'PUT', body: JSON.stringify(state.teams[k]) });
+        if (!res.ok) throw new Error(res.status);
+        warnedOffline = false;
+      } catch (e) {
+        dirty.add(k);
+        if (!warnedOffline) toast('Niet gedeeld (offline?) – lokaal bewaard');
+        warnedOffline = true;
+      }
+    }
+  }
+
+  // Skip pulls while the user is mid-edit so remote data never yanks the UI from under them.
+  function busy() {
+    const a = document.activeElement;
+    return dirty.size > 0 || pushTimer || drag || dlg.open || (a && a.tagName === 'INPUT');
+  }
+
+  async function pull() {
+    if (!DB_URL) return;
+    if (syncReady && dirty.size && !pushTimer) await push(); // retry changes that failed to send
+    if (syncReady && busy()) return;
+    let remote;
+    try {
+      const res = await fetch(`${DB_URL}/teams.json`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      remote = await res.json();
+    } catch (e) {
+      syncReady = true; // offline: keep working locally, push when possible
+      return;
+    }
+    const first = !syncReady;
+    syncReady = true;
+    if (!first && busy()) return;
+    for (const k in TEAMS) {
+      if (remote && remote[k]) state.teams[k] = normTeam(k, remote[k]);
+      else queuePush(k); // nothing shared yet for this team: share ours
+    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+    if (dirty.size) push();
+    render();
   }
 
   const team = () => state.teams[state.active];
@@ -466,6 +544,34 @@ if (typeof document !== 'undefined') {
 
   render();
   save();
+
+  function startSync() {
+    pull();
+    setInterval(() => { if (!document.hidden) pull(); }, 20000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+  }
+
+  const gate = $('#gate');
+  let authed = false;
+  try { authed = localStorage.getItem(AUTH_KEY) === '1'; } catch (e) { authed = false; }
+  if (authed) {
+    gate.remove();
+    startSync();
+  } else {
+    gate.hidden = false;
+    $('#gateInput').focus();
+    $('#gateForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if ($('#gateInput').value.trim() === PASSCODE) {
+        try { localStorage.setItem(AUTH_KEY, '1'); } catch (err) { /* storage unavailable */ }
+        gate.remove();
+        startSync();
+      } else {
+        $('#gateInput').value = '';
+        $('#gateMsg').hidden = false;
+      }
+    });
+  }
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator) {
