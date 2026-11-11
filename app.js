@@ -6,9 +6,12 @@
 // side: 'SB' (stuurboord) or 'BB' (bakboord) is the rower's usual side (shown as colour).
 // The side printed in the message always comes from the seat they sit on.
 // stroke: the side of the slag seat; the other seats alternate from there.
+// lineup: the sample line-up shown on first open, from slag to boeg; everyone else is reserve.
+// boot: the default bootnat time.
 const TEAMS = {
   HCL8: {
-    name: 'HCL8', size: 8, stroke: 'BB',
+    name: 'HCL8', size: 8, stroke: 'BB', boot: '11:00',
+    lineup: ['Tom', 'Tobias', 'Ole', 'Stan', 'Tinco', 'Jesse', 'Gijs', 'Sebastiaan'],
     rowers: [
       ['Gijs', 'BB'], ['Jesse', 'SB'], ['Lasse', 'SB'], ['Louk', 'SB'], ['Martijn', 'SB'],
       ['Ole', 'BB'], ['Ruud', 'BB'], ['Sebastiaan', 'SB'], ['Stan', 'SB'], ['Tinco', 'BB'],
@@ -16,7 +19,8 @@ const TEAMS = {
     ],
   },
   DCL8: {
-    name: 'DCL8', size: 8, stroke: 'SB',
+    name: 'DCL8', size: 8, stroke: 'SB', boot: '11:00',
+    lineup: ['Mirthe', 'Tess', 'Nanna', 'Sofie', 'Iris', 'Milla', 'Sol', 'Sytske'],
     rowers: [
       ['Annemijn', 'SB'], ['Iris', 'SB'], ['Milla', 'BB'], ['Milou', 'BB'], ['Mirthe', 'SB'],
       ['Sofie', 'BB'], ['Sol', 'BB'], ['Sytske', 'BB'], ['Tess', 'BB'], ['Mathilde', 'SB'],
@@ -24,17 +28,17 @@ const TEAMS = {
     ],
   },
   'DCL4*': {
-    name: 'DCL4*', size: 4, stroke: null, // scull: no sides
+    name: 'DCL4*', size: 4, stroke: null, boot: '07:00', // scull: no sides
+    lineup: ['Merel', 'Mette', 'Laila', 'Isabel'],
     rowers: [['Mette'], ['Anna'], ['Merel'], ['Isabel'], ['Jasmijn'], ['Laila']],
   },
 };
 
 const ERGO_BEFORE = 30; // minutes before bootnat
 const VOOR_BEFORE = 15; // minutes before bootnat
-const DEFAULT_BOOT = '11:00';
 
 const DAY_WORDS = ['vandaag', 'morgen', 'overmorgen'];
-const STORAGE_KEY = 'opstellingen-v2';
+const STORAGE_KEY = 'opstellingen-v3';
 const AUTH_KEY = 'opstellingen-auth';
 const PASSCODE = '1966'; // Simple gate only; anyone reading the source can see it.
 
@@ -51,10 +55,11 @@ function seatSide(cfg, seat) {
   return (cfg.size - seat) % 2 === 0 ? cfg.stroke : other;
 }
 
+// '07:00' minus 30 → '6:30' (no leading zero on the hour, as written in the messages).
 function minusMinutes(hhmm, mins) {
   const [h, m] = hhmm.split(':').map(Number);
   const t = (((h * 60 + m - mins) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
 function dayDate(offset, now) {
@@ -97,7 +102,7 @@ function buildMessage(team, cfg, now) {
       '',
       `${minusMinutes(team.boot, ERGO_BEFORE)} ergo`,
       `${minusMinutes(team.boot, VOOR_BEFORE)} voorbespreken`,
-      `${team.boot} bootnat`,
+      `${minusMinutes(team.boot, 0)} bootnat`,
     );
   }
 
@@ -117,19 +122,21 @@ if (typeof document !== 'undefined') {
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function newTeam(size) {
-    return { seats: Array(size).fill(null), day: 1, label: 'boottraining', boot: DEFAULT_BOOT };
+  // Sample line-up from the config; seats[i] is seat i+1, so reverse the slag→boeg list.
+  function newTeam(cfg) {
+    const seats = Array.from({ length: cfg.size }, (_, i) => (cfg.lineup || [])[cfg.size - 1 - i] || null);
+    return { seats, day: 1, label: 'boottraining', boot: cfg.boot };
   }
 
   // Seats only keep rowers that are still in the roster in the code.
   function normTeam(k, raw) {
     const cfg = TEAMS[k];
-    const t = Object.assign(newTeam(cfg.size), raw || {});
+    const t = Object.assign(newTeam(cfg), raw || {});
     const ids = new Set(rostersOf(cfg).map((r) => r.id));
     const seats = Array.isArray(t.seats) ? t.seats : [];
     t.seats = Array.from({ length: cfg.size }, (_, i) => (ids.has(seats[i]) ? seats[i] : null));
     if (![0, 1, 2].includes(t.day)) t.day = 1;
-    if (!/^\d\d:\d\d$/.test(t.boot || '')) t.boot = DEFAULT_BOOT;
+    if (!/^\d\d:\d\d$/.test(t.boot || '')) t.boot = cfg.boot;
     return t;
   }
 
@@ -154,9 +161,11 @@ if (typeof document !== 'undefined') {
   const cfg = () => TEAMS[state.active];
   const rowerById = (id) => rostersOf(cfg()).find((r) => r.id === id);
 
+  let selected = null; // id of the rower picked by tapping, waiting for a destination
+
   function rowerHTML(r) {
-    const cls = r.side === 'SB' ? 'sb' : r.side === 'BB' ? 'bb' : 'multi';
-    return `<div class="rower ${cls}" data-id="${esc(r.id)}"><span>${esc(r.name)}</span>${r.side ? `<span class="side">${r.side}</span>` : ''}</div>`;
+    const cls = (r.side === 'SB' ? 'sb' : r.side === 'BB' ? 'bb' : 'multi') + (r.id === selected ? ' selected' : '');
+    return `<div class="rower ${cls}"data-id="${esc(r.id)}"><span>${esc(r.name)}</span>${r.side ? `<span class="side">${r.side}</span>` : ''}</div>`;
   }
 
   /* ---------- Render ---------- */
@@ -169,6 +178,7 @@ if (typeof document !== 'undefined') {
       .map((k) => `<button type="button" data-team="${esc(k)}" aria-pressed="${k === state.active}">${esc(k)}</button>`)
       .join('');
 
+    document.body.classList.toggle('picking', !!selected);
     $('#boatTitle').textContent = `${c.name} · ${c.size} plekken`;
     $('#legend').hidden = !c.stroke;
 
@@ -219,6 +229,7 @@ if (typeof document !== 'undefined') {
     const b = e.target.closest('[data-team]');
     if (!b) return;
     state.active = b.dataset.team;
+    selected = null;
     commit();
   });
 
@@ -354,20 +365,22 @@ if (typeof document !== 'undefined') {
     drag = null;
   }
 
-  function dropRower(id, target) {
+  // to: a seat index, or 'bench'.
+  function moveRower(id, to) {
     const seats = team().seats;
     const from = seats.indexOf(id);
-    if (target.hasAttribute('data-bench')) {
+    if (to === 'bench') {
       if (from >= 0) seats[from] = null;
       return;
     }
-    const to = +target.dataset.seat;
     if (to === from) return;
     const occupant = seats[to];
     seats[to] = id;
     // Swap with the occupant if we came from a seat; otherwise the occupant goes to the bench.
     if (from >= 0) seats[from] = occupant;
   }
+
+  const targetOf = (el) => (el.hasAttribute('data-bench') ? 'bench' : +el.dataset.seat);
 
   document.addEventListener('pointerdown', (e) => {
     const el = e.target.closest('.rower');
@@ -381,6 +394,11 @@ if (typeof document !== 'undefined') {
       const dx = e.clientX - drag.x0;
       const dy = e.clientY - drag.y0;
       if (dx * dx + dy * dy < 49) return;
+      if (selected) {
+        selected = null;
+        document.body.classList.remove('picking');
+        document.querySelectorAll('.rower.selected').forEach((el) => el.classList.remove('selected'));
+      }
       startDrag();
     }
     e.preventDefault();
@@ -391,13 +409,53 @@ if (typeof document !== 'undefined') {
     if (!drag || e.pointerId !== drag.pid) return;
     const { id, started, target } = drag;
     endDrag();
-    if (started && target) {
-      dropRower(id, target);
+    if (!started) return; // a tap: handled by the click listener below
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    if (target) {
+      moveRower(id, targetOf(target));
       commit();
     }
   });
 
   document.addEventListener('pointercancel', endDrag);
+
+  /* ---------- Tap to move: tap a rower, then tap where they should go ---------- */
+
+  let suppressClick = false; // ignore the click some browsers fire right after a drag
+
+  document.addEventListener('click', (e) => {
+    if (suppressClick) return;
+    const rowerEl = e.target.closest('.rower');
+    const spotEl = e.target.closest('[data-seat], [data-bench]');
+
+    if (!selected) {
+      if (rowerEl) {
+        selected = rowerEl.dataset.id;
+        render();
+      }
+      return;
+    }
+
+    const seats = team().seats;
+    if (rowerEl && rowerEl.dataset.id !== selected) {
+      const other = rowerEl.dataset.id;
+      if (seats.includes(other)) {
+        moveRower(selected, seats.indexOf(other)); // take their seat (swap, or they go to reserves)
+      } else if (seats.includes(selected)) {
+        moveRower(other, seats.indexOf(selected)); // reserve takes the selected rower's seat
+      } else {
+        selected = other; // both reserves: just switch the selection
+        render();
+        return;
+      }
+    } else if (!rowerEl && spotEl) {
+      moveRower(selected, targetOf(spotEl));
+    }
+    // Tapping the same rower again, or anywhere else, cancels the selection.
+    selected = null;
+    commit();
+  });
 
   /* ---------- Start ---------- */
 

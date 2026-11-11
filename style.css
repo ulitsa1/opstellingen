@@ -180,6 +180,9 @@ button { cursor: pointer; }
 .rower.bb { background: var(--bb); }
 .rower.multi { background: var(--multi); }
 .rower.placeholder { opacity: 0.3; }
+.rower.selected { outline: 3px solid var(--text); outline-offset: 2px; }
+body.picking .empty { border-color: var(--multi); background: var(--over); }
+body.picking .bench { border-color: var(--multi); }
 .ghost {
   position: fixed;
   left: 0;
