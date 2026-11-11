@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Opstelling</title>
+  <meta name="description" content="Maak een bootopstelling en kopieer het bericht naar WhatsApp.">
+  <meta name="theme-color" content="#0f2a4a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Opstelling">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Opstelling</h1>
+    <nav class="tabs" id="tabs" aria-label="Ploeg"></nav>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-head">
+        <h2 id="boatTitle">Boot</h2>
+        <button type="button" class="link" id="clearBtn">Leegmaken</button>
+      </div>
+      <div class="legend" id="legend">
+        <span><i class="dot sb"></i>Stuurboord</span>
+        <span><i class="dot bb"></i>Bakboord</span>
+        <span><i class="dot multi"></i>Beide</span>
+      </div>
+      <div id="boat" class="boat"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Reserves</h2>
+        <button type="button" class="link" id="addBtn">+ Roeier</button>
+      </div>
+      <div id="bench" class="bench" data-bench></div>
+      <p class="hint">Sleep een roeier naar een plek in de boot. Tik op een roeier om te wijzigen.</p>
+    </section>
+
+    <section class="card">
+      <h2>Training</h2>
+      <div class="days" id="days"></div>
+      <label class="field">
+        <span>Training</span>
+        <input id="labelInput" type="text" autocomplete="off" placeholder="boottraining">
+      </label>
+      <div class="times">
+        <label class="field"><span>Ergo</span><input type="time" id="tErgo"></label>
+        <label class="field"><span>Voorbespreken</span><input type="time" id="tVoor"></label>
+        <label class="field"><span>Bootnat</span><input type="time" id="tBoot"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Bericht</h2>
+      <pre id="preview" class="preview"></pre>
+    </section>
+  </main>
+
+  <div class="actionbar">
+    <button type="button" id="copyBtn" class="primary">Kopieer bericht</button>
+    <a id="waBtn" class="wa" target="_blank" rel="noopener">WhatsApp</a>
+  </div>
+
+  <dialog id="editor">
+    <form id="editForm">
+      <h3 id="editTitle">Roeier</h3>
+      <input id="nameInput" type="text" autocomplete="off" autocapitalize="words" placeholder="Naam">
+      <div class="sidepick" id="sidePick">
+        <button type="button" data-side="SB" class="sb">Stuurboord</button>
+        <button type="button" data-side="BB" class="bb">Bakboord</button>
+        <button type="button" data-side="X" class="multi">Beide</button>
+      </div>
+      <div class="dlg-actions">
+        <button type="button" id="delBtn" class="danger">Verwijderen</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelBtn">Annuleer</button>
+        <button type="submit" class="primary">Opslaan</button>
+      </div>
+      <button type="button" id="saveNextBtn" class="secondary">Opslaan + volgende</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
